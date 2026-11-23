@@ -1,13 +1,15 @@
 // ============================================================
-// DORO SURVIVORS — UI Controller, Meta Shop & App Bootstrap
+// DORO SURVIVORS 2.0 — UI Controller, Codex, Custom Avatar & Shop
 // ============================================================
 
 import {
   I18N,
+  MAPS,
   CHARACTERS,
   WEAPONS,
   PASSIVES,
   META_UPGRADES,
+  ACHIEVEMENTS,
   loadSaveData,
   writeSaveData,
 } from './config.js';
@@ -18,10 +20,12 @@ import { DoroGame } from './game.js';
 const save = loadSaveData();
 let lang = save.lang || 'zh';
 let selectedCharId = CHARACTERS[0].id;
+let selectedMapId = MAPS[0].id;
 let titleAnimId = null;
 let bannerTimeout = null;
 let cutinTimeout = null;
 let activeUpgradeChoices = [];
+let customAvatarImg = null;
 
 const $ = (id) => document.getElementById(id);
 
@@ -36,20 +40,47 @@ function fmtTime(sec) {
   return `${mm}:${ss}`;
 }
 
-function applyI18n() {
-  document.querySelectorAll('[data-i18n]').forEach((el) => {
-    const key = el.getAttribute('data-i18n');
-    el.textContent = t(key);
-  });
-  renderCharacterCards();
-  renderShop();
-  updateTitleMeta();
+// ==================== CUSTOM AVATAR LOADER ====================
+function loadCustomAvatarFromSave() {
+  if (!save.customAvatar) {
+    customAvatarImg = null;
+    game.setCustomAvatarImage(null);
+    $('btnClearAvatar').classList.add('hidden');
+    return;
+  }
+  const img = new Image();
+  img.onload = () => {
+    customAvatarImg = img;
+    game.setCustomAvatarImage(img);
+    $('btnClearAvatar').classList.remove('hidden');
+  };
+  img.src = save.customAvatar;
 }
 
-function updateTitleMeta() {
-  $('titleCoins').textContent = save.coins;
-  $('titleBestTime').textContent = fmtTime(save.bestTime);
-  $('titleBestKills').textContent = save.bestKills;
+function handleAvatarUpload(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const raw = new Image();
+    raw.onload = () => {
+      // Resize cleanly to 128x128 square center-crop so localStorage stays tiny & crisp
+      const size = 128;
+      const off = document.createElement('canvas');
+      off.width = size;
+      off.height = size;
+      const ctx = off.getContext('2d');
+      const minSide = Math.min(raw.width, raw.height);
+      const sx = (raw.width - minSide) / 2;
+      const sy = (raw.height - minSide) / 2;
+      ctx.drawImage(raw, sx, sy, minSide, minSide, 0, 0, size, size);
+      save.customAvatar = off.toDataURL('image/png', 0.9);
+      writeSaveData(save);
+      loadCustomAvatarFromSave();
+      sound.playLevelUp();
+    };
+    raw.src = reader.result;
+  };
+  reader.readAsDataURL(file);
 }
 
 // ==================== GAME INSTANCE ====================
@@ -59,13 +90,76 @@ const game = new DoroGame($('gameCanvas'), {
   onChestOpen: openChestModal,
   onFullBurst: showFullBurstCutIn,
   onBanner: showBanner,
+  onRunEvent: handleRunEvent,
   onGameOver: (summary) => openSummaryModal(summary, false),
   onVictory: (summary) => openSummaryModal(summary, true),
   onTogglePause: togglePause,
   onToggleMute: toggleMute,
 });
 
-// ==================== TITLE SCREEN ====================
+function handleRunEvent(type, payload) {
+  const beforeClaimable = countClaimableAchievements();
+  if (type === 'burst') save.stats.totalBursts += 1;
+  else if (type === 'evolution') save.stats.totalEvolutions += 1;
+  else if (type === 'bossKilled' && payload) {
+    if (!save.stats.bossesDefeated.includes(payload)) {
+      save.stats.bossesDefeated.push(payload);
+    }
+  }
+  writeSaveData(save);
+  if (countClaimableAchievements() > beforeClaimable) {
+    showBanner('achUnlockedBanner', 'gold');
+  }
+}
+
+function countClaimableAchievements() {
+  return ACHIEVEMENTS.filter((a) => a.check(save) && !save.claimedAchievements.includes(a.id)).length;
+}
+
+function updateCodexDot() {
+  const claimable = countClaimableAchievements();
+  $('codexDot').classList.toggle('hidden', claimable === 0);
+}
+
+// ==================== I18N & TITLE SCREEN ====================
+function applyI18n() {
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    const key = el.getAttribute('data-i18n');
+    el.textContent = t(key);
+  });
+  renderMapCards();
+  renderCharacterCards();
+  renderShop();
+  renderCodex();
+  updateTitleMeta();
+}
+
+function updateTitleMeta() {
+  $('titleCoins').textContent = save.coins;
+  $('titleBestTime').textContent = fmtTime(save.bestTime);
+  $('titleBestKills').textContent = save.bestKills;
+  updateCodexDot();
+}
+
+function renderMapCards() {
+  const grid = $('mapGrid');
+  grid.innerHTML = '';
+  MAPS.forEach((m) => {
+    const card = document.createElement('div');
+    card.className = `map-card${m.id === selectedMapId ? ' selected' : ''}`;
+    card.innerHTML = `
+      <div class="map-title">${m.icon} ${m.name[lang]}</div>
+      <div class="map-mech">${m.mechanic[lang]}</div>
+    `;
+    card.addEventListener('click', () => {
+      selectedMapId = m.id;
+      sound.playXp();
+      renderMapCards();
+    });
+    grid.appendChild(card);
+  });
+}
+
 function renderCharacterCards() {
   const grid = $('charGrid');
   grid.innerHTML = '';
@@ -110,9 +204,8 @@ function startTitleAnimation() {
     }
     const time = now / 1000;
     const selectedChar = CHARACTERS.find((c) => c.id === selectedCharId) || CHARACTERS[0];
-    drawTitleHeroScene(heroCanvas, time, selectedChar.variant);
+    drawTitleHeroScene(heroCanvas, time, selectedChar.variant, selectedMapId, customAvatarImg);
 
-    // Animate mini Doro previews in character cards
     document.querySelectorAll('.char-card').forEach((card) => {
       const cid = card.dataset.char;
       const char = CHARACTERS.find((x) => x.id === cid);
@@ -147,12 +240,18 @@ function updateHud(data) {
   $('endlessBadge').classList.toggle('hidden', !data.endless);
   $('endlessBadge').textContent = t('endlessMode');
 
-  // HP
+  const feverEl = $('feverBadge');
+  if (data.feverTimer > 0) {
+    feverEl.classList.remove('hidden');
+    feverEl.textContent = `🌟 FEVER 2× (${data.feverTimer.toFixed(0)}s)`;
+  } else {
+    feverEl.classList.add('hidden');
+  }
+
   const hpPct = Math.max(0, Math.min(100, (data.hp / Math.max(1, data.maxHp)) * 100));
   $('hudHpFill').style.width = `${hpPct}%`;
   $('hudHpText').textContent = `${data.hp} / ${data.maxHp}`;
 
-  // Burst Button
   const burstBtn = $('btnBurst');
   const burstFill = $('burstFill');
   const burstLabel = $('burstLabel');
@@ -175,7 +274,6 @@ function updateHud(data) {
     burstBtn.classList.remove('ready', 'active');
   }
 
-  // Boss Bar
   if (data.boss) {
     $('bossBarWrap').classList.remove('hidden');
     $('bossName').textContent = data.boss.name[lang] || data.boss.name.zh;
@@ -185,7 +283,6 @@ function updateHud(data) {
     $('bossBarWrap').classList.add('hidden');
   }
 
-  // Weapon & Passive Inventory Slots
   renderSlots($('weaponSlots'), data.weapons, WEAPONS, 6, true);
   renderSlots($('passiveSlots'), data.passives, PASSIVES, 6, false);
 }
@@ -210,37 +307,34 @@ function renderSlots(container, ownedMap, defs, maxSlots, isWeapon) {
   container.innerHTML = html;
 }
 
-// ==================== BANNERS & FULL BURST CUT-IN ====================
+// ==================== BANNERS & CUT-IN ====================
 function showBanner(i18nKey, style = 'pink') {
   const el = $('eventBanner');
   el.textContent = t(i18nKey);
   el.className = `event-banner ${style}`;
   clearTimeout(bannerTimeout);
-  bannerTimeout = setTimeout(() => {
-    el.classList.add('hidden');
-  }, 2900);
+  bannerTimeout = setTimeout(() => el.classList.add('hidden'), 3000);
 }
 
 function showFullBurstCutIn(variant) {
   const wrap = $('burstCutin');
-  drawBurstCutIn($('burstCanvas'), variant);
+  drawBurstCutIn($('burstCanvas'), variant, customAvatarImg);
   $('cutinMain').textContent = t('fullBurstShout');
   wrap.classList.remove('hidden');
-  // Restart CSS animation cleanly
   const band = wrap.querySelector('.cutin-band');
   band.style.animation = 'none';
   void band.offsetWidth;
   band.style.animation = '';
-
   clearTimeout(cutinTimeout);
-  cutinTimeout = setTimeout(() => {
-    wrap.classList.add('hidden');
-  }, 1400);
+  cutinTimeout = setTimeout(() => wrap.classList.add('hidden'), 1400);
 }
 
-// ==================== LEVEL-UP MODAL ====================
-function openLevelUpModal(choices) {
+// ==================== LEVEL-UP MODAL (WITH REROLL & SKIP) ====================
+function openLevelUpModal(choices, rerollsLeft = 0) {
   activeUpgradeChoices = choices;
+  $('rerollCount').textContent = rerollsLeft;
+  $('btnReroll').disabled = rerollsLeft <= 0;
+
   const grid = $('upgradeGrid');
   grid.innerHTML = '';
 
@@ -248,12 +342,7 @@ function openLevelUpModal(choices) {
     const btn = document.createElement('button');
     btn.className = `upgrade-card${ch.kind === 'evolve' ? ' evolve-card' : ''}`;
 
-    let icon = '✨';
-    let tagHtml = '';
-    let name = '';
-    let desc = '';
-    let synergyHtml = '';
-
+    let icon = '✨', tagHtml = '', name = '', desc = '', synergyHtml = '';
     if (ch.kind === 'evolve') {
       const def = WEAPONS[ch.id];
       icon = def.evolvedIcon;
@@ -264,18 +353,14 @@ function openLevelUpModal(choices) {
       const def = WEAPONS[ch.id];
       const syn = PASSIVES[def.synergyPassive];
       icon = def.icon;
-      tagHtml = ch.isNew
-        ? `<span class="upgrade-tag new">${t('newTag')}</span>`
-        : `<span class="upgrade-tag">LV ${ch.nextLevel}</span>`;
+      tagHtml = ch.isNew ? `<span class="upgrade-tag new">${t('newTag')}</span>` : `<span class="upgrade-tag">LV ${ch.nextLevel}</span>`;
       name = def.name[lang];
       desc = def.levelTips[lang][ch.nextLevel - 1] || def.desc[lang];
       synergyHtml = `<div class="upgrade-synergy">${t('synergyHint')}: ${syn.icon} ${syn.name[lang]}</div>`;
     } else if (ch.kind === 'passive') {
       const def = PASSIVES[ch.id];
       icon = def.icon;
-      tagHtml = ch.isNew
-        ? `<span class="upgrade-tag new">${t('newTag')}</span>`
-        : `<span class="upgrade-tag">LV ${ch.nextLevel}</span>`;
+      tagHtml = ch.isNew ? `<span class="upgrade-tag new">${t('newTag')}</span>` : `<span class="upgrade-tag">LV ${ch.nextLevel}</span>`;
       name = def.name[lang];
       desc = def.desc[lang];
     }
@@ -290,7 +375,6 @@ function openLevelUpModal(choices) {
       ${synergyHtml}
       <div class="upgrade-key">[${idx + 1}]</div>
     `;
-
     btn.addEventListener('click', () => selectUpgrade(idx));
     grid.appendChild(btn);
   });
@@ -306,7 +390,6 @@ function selectUpgrade(idx) {
   game.applyChoice(ch);
 }
 
-// Keyboard shortcuts 1/2/3 for Level Up modal
 window.addEventListener('keydown', (e) => {
   if (!$('levelUpModal').classList.contains('hidden')) {
     if (e.key === '1' || e.key === '2' || e.key === '3') {
@@ -326,45 +409,21 @@ function openChestModal({ rewards, bonusCoins }) {
     row.className = `chest-item${rw.kind === 'evolve' ? ' evolved' : ''}`;
     if (rw.kind === 'evolve') {
       const def = WEAPONS[rw.id];
-      row.innerHTML = `
-        <div class="chest-item-icon">${def.evolvedIcon}</div>
-        <div>
-          <div style="font-weight:900;color:#ffd166">${t('evolveTag')} — ${def.evolvedName[lang]}</div>
-          <div style="font-size:12px;color:#f3d6e8">${def.evolvedDesc[lang]}</div>
-        </div>
-      `;
+      row.innerHTML = `<div class="chest-item-icon">${def.evolvedIcon}</div><div><div style="font-weight:900;color:#ffd166">${t('evolveTag')} — ${def.evolvedName[lang]}</div><div style="font-size:12px;color:#f3d6e8">${def.evolvedDesc[lang]}</div></div>`;
     } else if (rw.kind === 'weapon') {
       const def = WEAPONS[rw.id];
-      row.innerHTML = `
-        <div class="chest-item-icon">${def.icon}</div>
-        <div>
-          <div style="font-weight:900">${def.name[lang]} → LV ${rw.nextLevel}</div>
-          <div style="font-size:12px;color:#b8a4cc">${def.levelTips[lang][rw.nextLevel - 1] || ''}</div>
-        </div>
-      `;
+      row.innerHTML = `<div class="chest-item-icon">${def.icon}</div><div><div style="font-weight:900">${def.name[lang]} → LV ${rw.nextLevel}</div><div style="font-size:12px;color:#b8a4cc">${def.levelTips[lang][rw.nextLevel - 1] || ''}</div></div>`;
     } else {
       const def = PASSIVES[rw.id];
-      row.innerHTML = `
-        <div class="chest-item-icon">${def.icon}</div>
-        <div>
-          <div style="font-weight:900">${def.name[lang]} → LV ${rw.nextLevel}</div>
-          <div style="font-size:12px;color:#b8a4cc">${def.desc[lang]}</div>
-        </div>
-      `;
+      row.innerHTML = `<div class="chest-item-icon">${def.icon}</div><div><div style="font-weight:900">${def.name[lang]} → LV ${rw.nextLevel}</div><div style="font-size:12px;color:#b8a4cc">${def.desc[lang]}</div></div>`;
     }
     box.appendChild(row);
   });
 
   const coinRow = document.createElement('div');
   coinRow.className = 'chest-item';
-  coinRow.innerHTML = `
-    <div class="chest-item-icon">🍊</div>
-    <div>
-      <div style="font-weight:900;color:#ffd166">+${bonusCoins} ${t('coins')} & +25% HP</div>
-    </div>
-  `;
+  coinRow.innerHTML = `<div class="chest-item-icon">🍊</div><div><div style="font-weight:900;color:#ffd166">+${bonusCoins} ${t('coins')} & +25% HP</div></div>`;
   box.appendChild(coinRow);
-
   $('chestModal').classList.remove('hidden');
 }
 
@@ -382,11 +441,8 @@ function renderShop() {
 
     const item = document.createElement('div');
     item.className = 'shop-item';
-
     let pips = '';
-    for (let i = 0; i < up.maxLevel; i++) {
-      pips += `<div class="shop-pip${i < lv ? ' filled' : ''}"></div>`;
-    }
+    for (let i = 0; i < up.maxLevel; i++) pips += `<div class="shop-pip${i < lv ? ' filled' : ''}"></div>`;
 
     item.innerHTML = `
       <div class="shop-item-top">
@@ -399,9 +455,7 @@ function renderShop() {
         ${isMax ? t('maxed') : `${t('buy')} (🍊 ${cost})`}
       </button>
     `;
-
-    const buyBtn = item.querySelector('button');
-    buyBtn.addEventListener('click', () => {
+    item.querySelector('button').addEventListener('click', () => {
       if (isMax || save.coins < cost) return;
       save.coins -= cost;
       save.upgrades[up.id] = lv + 1;
@@ -410,16 +464,76 @@ function renderShop() {
       renderShop();
       updateTitleMeta();
     });
-
     grid.appendChild(item);
+  });
+}
+
+// ==================== CODEX & ACHIEVEMENTS ====================
+function renderCodex() {
+  $('codexCoins').textContent = save.coins;
+
+  // 1. Achievements panel
+  const achPanel = $('achPanel');
+  achPanel.innerHTML = '';
+  ACHIEVEMENTS.forEach((a) => {
+    const unlocked = a.check(save);
+    const claimed = save.claimedAchievements.includes(a.id);
+    const row = document.createElement('div');
+    row.className = `ach-row${unlocked && !claimed ? ' unlocked' : ''}`;
+    row.innerHTML = `
+      <div class="ach-icon">${a.icon}</div>
+      <div class="ach-info">
+        <div class="ach-name">${a.name[lang]}</div>
+        <div class="ach-desc">${a.desc[lang]}</div>
+      </div>
+      <button class="btn ${unlocked && !claimed ? 'gold-btn' : 'ghost-btn'} small-btn" ${unlocked && !claimed ? '' : 'disabled'}>
+        ${claimed ? t('claimed') : (unlocked ? `${t('claimReward')} 🍊${a.reward}` : `🔒 🍊${a.reward}`)}
+      </button>
+    `;
+    const btn = row.querySelector('button');
+    if (unlocked && !claimed) {
+      btn.addEventListener('click', () => {
+        save.claimedAchievements.push(a.id);
+        save.coins += a.reward;
+        writeSaveData(save);
+        sound.playChest();
+        renderCodex();
+        updateTitleMeta();
+      });
+    }
+    achPanel.appendChild(row);
+  });
+
+  // 2. Super Weapon Recipes panel
+  const recPanel = $('recipesPanel');
+  recPanel.innerHTML = '';
+  Object.values(WEAPONS).forEach((w) => {
+    const syn = PASSIVES[w.synergyPassive];
+    const row = document.createElement('div');
+    row.className = 'recipe-row';
+    row.innerHTML = `
+      <div class="recipe-formula">
+        <span>${w.icon} ${w.name[lang]} (L8)</span>
+        <span class="recipe-arrow">+</span>
+        <span>${syn.icon} ${syn.name[lang]}</span>
+        <span class="recipe-arrow">→</span>
+        <span class="recipe-evo">${w.evolvedIcon} ${w.evolvedName[lang]}</span>
+      </div>
+    `;
+    recPanel.appendChild(row);
   });
 }
 
 // ==================== SUMMARY / VICTORY / PAUSE ====================
 function commitRunRecords(summary) {
   save.coins += summary.coinsEarned;
+  save.stats.totalKills += summary.kills;
+  if (summary.coinsEarned > save.stats.maxCoinsRun) save.stats.maxCoinsRun = summary.coinsEarned;
   if (summary.time > save.bestTime) save.bestTime = summary.time;
   if (summary.kills > save.bestKills) save.bestKills = summary.kills;
+  if (summary.mapId && !save.stats.mapsPlayed.includes(summary.mapId)) {
+    save.stats.mapsPlayed.push(summary.mapId);
+  }
   writeSaveData(save);
   updateTitleMeta();
 }
@@ -439,7 +553,6 @@ function openSummaryModal(summary, isVictory) {
   $('sumLevel').textContent = summary.level;
   $('sumCoins').textContent = `+${summary.coinsEarned}`;
 
-  // Damage breakdown chart
   const dpsList = $('dpsList');
   dpsList.innerHTML = '';
   const entries = Object.entries(summary.damageByWeapon)
@@ -452,9 +565,7 @@ function openSummaryModal(summary, isVictory) {
     const wState = summary.weapons[wid];
     let label = wid === 'burst' ? '⚡ FULL BURST' : wid;
     if (def) {
-      label = wState?.evolved
-        ? `${def.evolvedIcon} ${def.evolvedName[lang]}`
-        : `${def.icon} ${def.name[lang]}`;
+      label = wState?.evolved ? `${def.evolvedIcon} ${def.evolvedName[lang]}` : `${def.icon} ${def.name[lang]}`;
     }
     const pct = Math.max(4, Math.round((dmg / maxDmg) * 100));
     const row = document.createElement('div');
@@ -483,21 +594,24 @@ function togglePause() {
 function toggleMute() {
   const muted = sound.toggleMute();
   $('btnMute').textContent = muted ? '🔇' : '🔊';
-  if (!muted && game.state === 'playing') {
-    sound.startBgm();
-  }
+  if (!muted && game.state === 'playing') sound.startBgm();
 }
 
 function startNewRun() {
+  if (!save.stats.mapsPlayed.includes(selectedMapId)) {
+    save.stats.mapsPlayed.push(selectedMapId);
+    writeSaveData(save);
+  }
   $('titleScreen').classList.add('hidden');
   $('shopModal').classList.add('hidden');
+  $('codexModal').classList.add('hidden');
   $('pauseModal').classList.add('hidden');
   $('summaryModal').classList.add('hidden');
   $('levelUpModal').classList.add('hidden');
   $('chestModal').classList.add('hidden');
   $('hud').classList.remove('hidden');
   sound.ensureContext();
-  game.startRun(selectedCharId, save.upgrades);
+  game.startRun(selectedCharId, selectedMapId, save.upgrades);
 }
 
 function returnToTitle() {
@@ -512,15 +626,11 @@ function returnToTitle() {
   startTitleAnimation();
 }
 
-// ==================== WIRE UP BUTTONS ====================
+// ==================== WIRE UP EVENTS ====================
 $('btnStart').addEventListener('click', startNewRun);
-$('btnOpenShop').addEventListener('click', () => {
-  renderShop();
-  $('shopModal').classList.remove('hidden');
-});
-$('btnShopClose').addEventListener('click', () => {
-  $('shopModal').classList.add('hidden');
-});
+
+$('btnOpenShop').addEventListener('click', () => { renderShop(); $('shopModal').classList.remove('hidden'); });
+$('btnShopClose').addEventListener('click', () => $('shopModal').classList.add('hidden'));
 $('btnShopReset').addEventListener('click', () => {
   let refund = 0;
   META_UPGRADES.forEach((up) => {
@@ -532,6 +642,45 @@ $('btnShopReset').addEventListener('click', () => {
   writeSaveData(save);
   renderShop();
   updateTitleMeta();
+});
+
+$('btnOpenCodex').addEventListener('click', () => { renderCodex(); $('codexModal').classList.remove('hidden'); });
+$('btnCodexClose').addEventListener('click', () => $('codexModal').classList.add('hidden'));
+$('tabBtnAch').addEventListener('click', () => {
+  $('tabBtnAch').classList.add('active');
+  $('tabBtnRecipes').classList.remove('active');
+  $('achPanel').classList.remove('hidden');
+  $('recipesPanel').classList.add('hidden');
+});
+$('tabBtnRecipes').addEventListener('click', () => {
+  $('tabBtnRecipes').classList.add('active');
+  $('tabBtnAch').classList.remove('active');
+  $('recipesPanel').classList.remove('hidden');
+  $('achPanel').classList.add('hidden');
+});
+
+$('btnCustomAvatar').addEventListener('click', () => $('avatarInput').click());
+$('avatarInput').addEventListener('change', (e) => {
+  const file = e.target.files?.[0];
+  if (file) handleAvatarUpload(file);
+  e.target.value = '';
+});
+$('btnClearAvatar').addEventListener('click', () => {
+  save.customAvatar = null;
+  writeSaveData(save);
+  loadCustomAvatarFromSave();
+});
+
+$('btnReroll').addEventListener('click', () => {
+  const next = game.rerollChoices();
+  if (next && next.length > 0) {
+    openLevelUpModal(next, game.player.rerollsLeft);
+  }
+});
+$('btnSkipHeal').addEventListener('click', () => {
+  activeUpgradeChoices = [];
+  $('levelUpModal').classList.add('hidden');
+  game.skipLevelUpAndHeal();
 });
 
 $('btnLang').addEventListener('click', () => {
@@ -559,5 +708,6 @@ $('btnChestClaim').addEventListener('click', () => {
 });
 
 // Initialize!
+loadCustomAvatarFromSave();
 applyI18n();
 startTitleAnimation();

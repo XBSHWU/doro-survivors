@@ -3,19 +3,17 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>DORO 倖存者 — 勝利女神妮姬版吸血鬼倖存者</title>
+  <title>DORO 倖存者 2.0 — 勝利女神妮姬版吸血鬼倖存者</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <!-- Main Game Canvas -->
   <canvas id="gameCanvas"></canvas>
 
   <!-- ==================== IN-GAME HUD ==================== -->
   <div id="hud" class="hud hidden">
-    <!-- Top XP Bar -->
     <div class="xp-bar-wrap">
       <div id="xpFill" class="xp-fill"></div>
       <div class="xp-label">
@@ -23,10 +21,8 @@
       </div>
     </div>
 
-    <!-- Top Info Row -->
     <div class="hud-top">
       <div class="hud-left">
-        <!-- Weapons & Passives Inventory -->
         <div class="inv-group">
           <div id="weaponSlots" class="slot-row"></div>
           <div id="passiveSlots" class="slot-row passive-row"></div>
@@ -35,6 +31,7 @@
 
       <div class="hud-center">
         <div id="hudTimer" class="timer-pill">00:00</div>
+        <div id="feverBadge" class="fever-badge hidden">🌟 FEVER 2×</div>
         <div id="endlessBadge" class="endless-badge hidden">ENDLESS</div>
       </div>
 
@@ -46,7 +43,6 @@
       </div>
     </div>
 
-    <!-- Boss HP Bar -->
     <div id="bossBarWrap" class="boss-bar-wrap hidden">
       <div class="boss-bar-header">
         <span id="bossName">TYRANT</span>
@@ -57,15 +53,13 @@
       </div>
     </div>
 
-    <!-- Dynamic Event Banner -->
     <div id="eventBanner" class="event-banner hidden"></div>
 
-    <!-- Bottom HUD: HP + FULL BURST Button -->
     <div class="hud-bottom">
       <div class="hp-panel">
         <div class="hp-panel-top">
           <span data-i18n="hp">生命</span>
-          <span id="hudHpText">110 / 110</span>
+          <span id="hudHpText">115 / 115</span>
         </div>
         <div class="hp-track">
           <div id="hudHpFill" class="hp-fill"></div>
@@ -97,7 +91,7 @@
   <div id="titleScreen" class="overlay title-screen">
     <div class="title-card">
       <div class="title-topbar">
-        <div class="brand-chip">NIKKE × VAMPIRE SURVIVORS</div>
+        <div class="brand-chip">NIKKE × VAMPIRE SURVIVORS 2.0</div>
         <div class="topbar-actions">
           <div class="meta-pill">🍊 <span id="titleCoins">0</span></div>
           <div class="meta-pill">⏱ <span id="titleBestTime">00:00</span></div>
@@ -110,9 +104,23 @@
         <div class="hero-visual-wrap">
           <canvas id="titleHeroCanvas" class="hero-canvas"></canvas>
           <div class="hero-title-overlay">
-            <h1 id="mainTitle" data-i18n="gameTitle">DORO 倖存者</h1>
+            <h1 id="mainTitle" data-i18n="gameTitle">DORO 倖存者 2.0</h1>
             <p id="mainSubtitle" data-i18n="gameSubtitle">勝利女神：橘子與失樂園的無雙生存戰</p>
           </div>
+          <div class="hero-avatar-actions">
+            <input type="file" id="avatarInput" accept="image/*" hidden />
+            <button id="btnCustomAvatar" class="mini-pill-btn">
+              🖼️ <span data-i18n="customImgBtn">自訂 Doro 圖片</span>
+            </button>
+            <button id="btnClearAvatar" class="mini-pill-btn danger hidden">
+              ✕ <span data-i18n="customImgClear">恢復預設 Doro</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="map-section">
+          <div class="section-label" data-i18n="selectMap">選擇戰場地圖</div>
+          <div id="mapGrid" class="map-grid"></div>
         </div>
 
         <div class="char-section">
@@ -124,6 +132,10 @@
       <div class="title-footer">
         <button id="btnOpenShop" class="btn secondary-btn">
           <span>🍊</span> <span data-i18n="shopBtn">伊甸橘子商店</span>
+        </button>
+        <button id="btnOpenCodex" class="btn ghost-btn codex-trigger">
+          <span>🏆</span> <span data-i18n="codexBtn">成就與超武圖鑑</span>
+          <span id="codexDot" class="notify-dot hidden"></span>
         </button>
         <button id="btnStart" class="btn primary-btn">
           <span>⚡</span> <span data-i18n="startBattle">開始出擊！</span>
@@ -156,6 +168,31 @@
     </div>
   </div>
 
+  <!-- ==================== CODEX & ACHIEVEMENTS MODAL ==================== -->
+  <div id="codexModal" class="overlay hidden">
+    <div class="modal-card codex-card">
+      <div class="modal-header">
+        <div>
+          <h2 data-i18n="codexTitle">成就與超武圖鑑</h2>
+          <p class="modal-sub" data-i18n="codexSub">解鎖成就領取橘子幣獎勵，並查看超武進化配方</p>
+        </div>
+        <div class="shop-coins">🍊 <span id="codexCoins">0</span></div>
+      </div>
+
+      <div class="codex-tabs">
+        <button id="tabBtnAch" class="tab-btn active" data-i18n="tabAchievements">成就獎勵</button>
+        <button id="tabBtnRecipes" class="tab-btn" data-i18n="tabRecipes">超武配方</button>
+      </div>
+
+      <div id="achPanel" class="codex-panel"></div>
+      <div id="recipesPanel" class="codex-panel hidden"></div>
+
+      <div class="modal-actions" style="margin-top:14px">
+        <button id="btnCodexClose" class="btn primary-btn" data-i18n="shopClose">返回</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ==================== LEVEL-UP MODAL ==================== -->
   <div id="levelUpModal" class="overlay hidden">
     <div class="modal-card levelup-card">
@@ -165,6 +202,14 @@
         <p class="modal-sub" data-i18n="levelUpSub">從伊甸補給箱中挑選一項強化</p>
       </div>
       <div id="upgradeGrid" class="upgrade-grid"></div>
+      <div class="levelup-footer">
+        <button id="btnReroll" class="btn secondary-btn small-btn">
+          🎲 <span data-i18n="rerollBtn">重骰選項</span> (<span id="rerollCount">3</span>)
+        </button>
+        <button id="btnSkipHeal" class="btn ghost-btn small-btn">
+          🍊 <span data-i18n="skipHealBtn">跳過並回復 20% HP</span>
+        </button>
+      </div>
     </div>
   </div>
 
