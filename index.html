@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>DORO 倖存者 — 勝利女神妮姬版吸血鬼倖存者</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600;800;900&family=Noto+Sans+TC:wght@500;700;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Main Game Canvas -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- ==================== IN-GAME HUD ==================== -->
+  <div id="hud" class="hud hidden">
+    <!-- Top XP Bar -->
+    <div class="xp-bar-wrap">
+      <div id="xpFill" class="xp-fill"></div>
+      <div class="xp-label">
+        <span id="hudLevel">LV 1</span>
+      </div>
+    </div>
+
+    <!-- Top Info Row -->
+    <div class="hud-top">
+      <div class="hud-left">
+        <!-- Weapons & Passives Inventory -->
+        <div class="inv-group">
+          <div id="weaponSlots" class="slot-row"></div>
+          <div id="passiveSlots" class="slot-row passive-row"></div>
+        </div>
+      </div>
+
+      <div class="hud-center">
+        <div id="hudTimer" class="timer-pill">00:00</div>
+        <div id="endlessBadge" class="endless-badge hidden">ENDLESS</div>
+      </div>
+
+      <div class="hud-right">
+        <div class="stat-pill">💀 <span id="hudKills">0</span></div>
+        <div class="stat-pill coin-pill">🍊 <span id="hudCoins">0</span></div>
+        <button id="btnMute" class="icon-btn" title="Mute (M)">🔊</button>
+        <button id="btnPause" class="icon-btn" title="Pause (P)">⏸</button>
+      </div>
+    </div>
+
+    <!-- Boss HP Bar -->
+    <div id="bossBarWrap" class="boss-bar-wrap hidden">
+      <div class="boss-bar-header">
+        <span id="bossName">TYRANT</span>
+        <span id="bossHpText">0 / 0</span>
+      </div>
+      <div class="boss-bar-track">
+        <div id="bossHpFill" class="boss-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- Dynamic Event Banner -->
+    <div id="eventBanner" class="event-banner hidden"></div>
+
+    <!-- Bottom HUD: HP + FULL BURST Button -->
+    <div class="hud-bottom">
+      <div class="hp-panel">
+        <div class="hp-panel-top">
+          <span data-i18n="hp">生命</span>
+          <span id="hudHpText">110 / 110</span>
+        </div>
+        <div class="hp-track">
+          <div id="hudHpFill" class="hp-fill"></div>
+        </div>
+      </div>
+
+      <button id="btnBurst" class="burst-btn" disabled>
+        <div id="burstFill" class="burst-fill"></div>
+        <div class="burst-content">
+          <span class="burst-tag">BURST III</span>
+          <span id="burstLabel" class="burst-label">爆裂充能 35%</span>
+        </div>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== FULL BURST CUT-IN ==================== -->
+  <div id="burstCutin" class="burst-cutin hidden">
+    <div class="cutin-band">
+      <canvas id="burstCanvas"></canvas>
+      <div class="cutin-text">
+        <div class="cutin-sub">GODDESS OF MANDARINS</div>
+        <div id="cutinMain" class="cutin-main">DORO FULL BURST!!</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== TITLE SCREEN ==================== -->
+  <div id="titleScreen" class="overlay title-screen">
+    <div class="title-card">
+      <div class="title-topbar">
+        <div class="brand-chip">NIKKE × VAMPIRE SURVIVORS</div>
+        <div class="topbar-actions">
+          <div class="meta-pill">🍊 <span id="titleCoins">0</span></div>
+          <div class="meta-pill">⏱ <span id="titleBestTime">00:00</span></div>
+          <div class="meta-pill">💀 <span id="titleBestKills">0</span></div>
+          <button id="btnLang" class="lang-btn">繁中 / EN</button>
+        </div>
+      </div>
+
+      <div class="title-hero-grid">
+        <div class="hero-visual-wrap">
+          <canvas id="titleHeroCanvas" class="hero-canvas"></canvas>
+          <div class="hero-title-overlay">
+            <h1 id="mainTitle" data-i18n="gameTitle">DORO 倖存者</h1>
+            <p id="mainSubtitle" data-i18n="gameSubtitle">勝利女神：橘子與失樂園的無雙生存戰</p>
+          </div>
+        </div>
+
+        <div class="char-section">
+          <div class="section-label" data-i18n="selectChar">選擇你的 Doro</div>
+          <div id="charGrid" class="char-grid"></div>
+        </div>
+      </div>
+
+      <div class="title-footer">
+        <button id="btnOpenShop" class="btn secondary-btn">
+          <span>🍊</span> <span data-i18n="shopBtn">伊甸橘子商店</span>
+        </button>
+        <button id="btnStart" class="btn primary-btn">
+          <span>⚡</span> <span data-i18n="startBattle">開始出擊！</span>
+        </button>
+      </div>
+
+      <div class="controls-hint" data-i18n="controlsHint">
+        WASD / 方向鍵 / 滑鼠拖曳移動 • 空白鍵：全爆裂 FULL BURST • P：暫停 • M：靜音
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== EDEN SHOP MODAL ==================== -->
+  <div id="shopModal" class="overlay hidden">
+    <div class="modal-card shop-card">
+      <div class="modal-header">
+        <div>
+          <h2 data-i18n="shopTitle">伊甸橘子商店</h2>
+          <p class="modal-sub" data-i18n="shopSub">使用橘子幣永久強化所有 Doro 能力</p>
+        </div>
+        <div class="shop-coins">🍊 <span id="shopCoins">0</span></div>
+      </div>
+
+      <div id="shopGrid" class="shop-grid"></div>
+
+      <div class="modal-actions">
+        <button id="btnShopReset" class="btn ghost-btn" data-i18n="shopReset">重置並退還</button>
+        <button id="btnShopClose" class="btn primary-btn" data-i18n="shopClose">返回</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== LEVEL-UP MODAL ==================== -->
+  <div id="levelUpModal" class="overlay hidden">
+    <div class="modal-card levelup-card">
+      <div class="levelup-header">
+        <div class="levelup-badge">EDEN SUPPLY</div>
+        <h2 data-i18n="levelUpTitle">LEVEL UP！選擇強化</h2>
+        <p class="modal-sub" data-i18n="levelUpSub">從伊甸補給箱中挑選一項強化</p>
+      </div>
+      <div id="upgradeGrid" class="upgrade-grid"></div>
+    </div>
+  </div>
+
+  <!-- ==================== TREASURE CHEST MODAL ==================== -->
+  <div id="chestModal" class="overlay hidden">
+    <div class="modal-card chest-card">
+      <div class="chest-sparkles">✨🎁✨</div>
+      <h2 data-i18n="chestTitle">伊甸寶箱開啟！</h2>
+      <p class="modal-sub" data-i18n="chestSub">Doro 在萊徹殘骸裡翻出了好東西！</p>
+      <div id="chestRewards" class="chest-rewards"></div>
+      <div class="modal-actions center">
+        <button id="btnChestClaim" class="btn primary-btn" data-i18n="chestClaim">收下戰利品</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== PAUSE MODAL ==================== -->
+  <div id="pauseModal" class="overlay hidden">
+    <div class="modal-card pause-card">
+      <h2 data-i18n="pauseTitle">戰鬥暫停</h2>
+      <div class="modal-actions vertical">
+        <button id="btnResume" class="btn primary-btn" data-i18n="resume">繼續戰鬥</button>
+        <button id="btnRestartPause" class="btn secondary-btn" data-i18n="restart">重新開始</button>
+        <button id="btnQuitTitle" class="btn ghost-btn" data-i18n="backToTitle">返回主選單</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== GAME OVER / VICTORY MODAL ==================== -->
+  <div id="summaryModal" class="overlay hidden">
+    <div class="modal-card summary-card">
+      <div id="summaryBadge" class="summary-badge">RESULT</div>
+      <h2 id="summaryTitle">Doro 倒下了...</h2>
+      <p id="summarySub" class="modal-sub"></p>
+
+      <div class="summary-stats">
+        <div class="sum-box">
+          <div class="sum-label" data-i18n="survivedTime">存活時間</div>
+          <div id="sumTime" class="sum-val">00:00</div>
+        </div>
+        <div class="sum-box">
+          <div class="sum-label" data-i18n="totalKills">擊殺萊徹</div>
+          <div id="sumKills" class="sum-val">0</div>
+        </div>
+        <div class="sum-box">
+          <div class="sum-label" data-i18n="finalLevel">最終等級</div>
+          <div id="sumLevel" class="sum-val">1</div>
+        </div>
+        <div class="sum-box gold">
+          <div class="sum-label" data-i18n="coinsEarned">獲得橘子幣</div>
+          <div id="sumCoins" class="sum-val">+0</div>
+        </div>
+      </div>
+
+      <div class="dps-section">
+        <div class="section-label" data-i18n="damageReport">武器傷害統計</div>
+        <div id="dpsList" class="dps-list"></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="btnEndless" class="btn gold-btn hidden" data-i18n="continueEndless">進入無盡模式</button>
+        <button id="btnPlayAgain" class="btn primary-btn" data-i18n="playAgain">再來一局</button>
+        <button id="btnSummaryTitle" class="btn ghost-btn" data-i18n="backToTitle">返回主選單</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
